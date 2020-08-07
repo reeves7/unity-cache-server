@@ -8,6 +8,7 @@ const path = require('path');
 const randomBuffer = require('./test_utils').randomBuffer;
 const consts = require('../lib/constants');
 const sinon = require('sinon');
+const { Writable } = require('stream');
 
 describe("Cache: Base Class", () => {
     let cache;
@@ -124,17 +125,15 @@ describe("Cache: Base Class", () => {
     });
 
     describe("createPutTransaction", () => {
-        it("should require override implementation in subclasses by returning an error", () => {
-            return cache.createPutTransaction()
-                .then(() => { throw new Error("Expected error!"); }, () => {});
+        it("should return an instance of a PutTransaction", async () => {
+            const t = await cache.createPutTransaction();
+            assert.ok(t instanceof PutTransaction);
         });
     });
 
     describe("endPutTransaction", () => {
-        let stub;
-
         after(() => {
-            stub.resetBehavior();
+            sinon.restore();
         });
 
         it("should call finalize on the transaction", async () => {
@@ -145,10 +144,10 @@ describe("Cache: Base Class", () => {
             mock.verify();
         });
 
-        it("should process valid transactions with the reliability manager if high reliability mode is on", async () => {
+        it("should process transactions with the reliability manager if high reliability mode is on", async () => {
             const trx = {
                 finalize: () => {},
-                isValid: false
+                isValid: true
             };
 
             const myOpts = Object.assign({}, opts);
@@ -156,20 +155,14 @@ describe("Cache: Base Class", () => {
             myOpts.highReliabilityOptions = { reliabilityThreshold: 2 };
 
             await cache.init(myOpts);
-            stub = sinon.stub(cache._rm, "processTransaction");
+            const stub = sinon.stub(cache._rm, "processTransaction");
 
-            // invalid transaction, high reliability enabled: should not process
-            await cache.endPutTransaction(trx);
-            assert(stub.notCalled);
-            stub.resetHistory();
-
-            // valid transaction, high reliability enabled: should process
-            trx.isValid = true;
+            // High reliability enabled: should process
             await cache.endPutTransaction(trx);
             assert(stub.calledOnce);
             stub.resetHistory();
 
-            // valid transaction, high reliability disabled: should not process
+            // High reliability disabled: should not process
             myOpts.highReliability = false;
             await cache.endPutTransaction(trx);
             assert(stub.notCalled);
@@ -264,16 +257,16 @@ describe("PutTransaction: Base Class", () => {
     });
 
     describe("getWriteStream", () => {
-        it("should require override implementation in subclasses by returning an error", () => {
-            return trx.getWriteStream(consts.FILE_TYPE.INFO, 0)
-                .then(() => { throw new Error("Expected error!"); }, () => {});
+        it("should return a Writable stream", async() => {
+            const s = await trx.getWriteStream(consts.FILE_TYPE.INFO, 0);
+            assert.ok(s instanceof Writable);
         });
     });
 
     describe("writeFilesToPath", () => {
-        it("should require override implementation in subclasses by returning an error", () => {
-            return trx.writeFilesToPath()
-                .then(() => { throw new Error("Expected error!"); }, () => {});
+        it("should return a promise", () => {
+            const p = trx.writeFilesToPath();
+            assert.ok(p instanceof Promise);
         });
     });
 });

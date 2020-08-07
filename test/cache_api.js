@@ -6,7 +6,6 @@ const loki = require('lokijs');
 const fs = require('fs-extra');
 const sleep = require('./test_utils').sleep;
 const generateCommandData = require('./test_utils').generateCommandData;
-const readStream = require('./test_utils').readStream;
 const sinon = require('sinon');
 const crypto = require('crypto');
 const consts = require('../lib/constants');
@@ -39,7 +38,9 @@ const test_modules = [
     }
 ];
 
-describe("Cache API", () => {
+describe("Cache API", function() {
+    this.slow(300);
+
     test_modules.forEach(module => {
         describe(module.name, () => {
             let CacheModule, cache;
@@ -143,46 +144,6 @@ describe("Cache API", () => {
 
                     return cache.getFileInfo(consts.FILE_TYPE.INFO, fileData.guid, fileData.hash)
                         .then(() => { throw new Error("Expected error!"); }, err =>  assert(err));
-                });
-
-                it("should handle files being replaced while read streams to the same file are already open", async () => {
-                    const TEST_FILE_SIZE = 1024 * 64 * 2;
-
-                    const fData = generateCommandData(TEST_FILE_SIZE, TEST_FILE_SIZE);
-
-                    // Add a file to the cache (use the info data)
-                    let trx = await cache.createPutTransaction(fData.guid, fData.hash);
-                    let wStream = await trx.getWriteStream(consts.FILE_TYPE.INFO, fData.info.length);
-                    await new Promise(resolve => wStream.end(fData.info, resolve));
-                    await cache.endPutTransaction(trx);
-                    await sleep(50);
-
-                    // Get a read stream
-                    let rStream = await cache.getFileStream(consts.FILE_TYPE.INFO, fData.guid, fData.hash);
-
-                    // Read a block
-                    let buf = Buffer.allocUnsafe(fData.info.length);
-                    let bytes = await new Promise(resolve => rStream.once('readable', () => resolve(rStream.read(1024 * 64))));
-                    bytes.copy(buf, 0, 0);
-
-                    // Replace the file (use the resource data)
-                    trx = await cache.createPutTransaction(fData.guid, fData.hash);
-                    wStream = await trx.getWriteStream(consts.FILE_TYPE.INFO, fData.resource.length);
-                    await new Promise(resolve => wStream.end(fData.resource, resolve));
-                    await cache.endPutTransaction(trx);
-                    await sleep(50);
-
-                    // Read the rest of the file - compare it to the info data
-                    bytes = await readStream(rStream, fData.info.length - bytes.length);
-                    bytes.copy(buf, fData.info.length - bytes.length, 0);
-                    assert.equal(buf.compare(fData.info), 0);
-
-                    // Get another new read stream to the same guid
-                    rStream = await cache.getFileStream(consts.FILE_TYPE.INFO, fData.guid, fData.hash);
-
-                    // Read the file and compare it to the resource data
-                    buf = await readStream(rStream, fData.resource.length);
-                    assert.equal(buf.compare(fData.resource), 0);
                 });
 
                 describe("High Reliability Mode", () => {

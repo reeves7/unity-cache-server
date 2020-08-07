@@ -1,4 +1,4 @@
-#  Cache Server v6.1 [![Build Status](https://travis-ci.org/Unity-Technologies/unity-cache-server.svg?branch=master)](https://travis-ci.org/Unity-Technologies/unity-cache-server) [![Coverage Status](https://coveralls.io/repos/github/Unity-Technologies/unity-cache-server/badge.svg)](https://coveralls.io/github/Unity-Technologies/unity-cache-server)
+#  Cache Server v6.4 [![Build Status](https://travis-ci.org/Unity-Technologies/unity-cache-server.svg?branch=master)](https://travis-ci.org/Unity-Technologies/unity-cache-server) [![Coverage Status](https://coveralls.io/repos/github/Unity-Technologies/unity-cache-server/badge.svg)](https://coveralls.io/github/Unity-Technologies/unity-cache-server)
 > The Unity Cache Server, optimized for locally networked team environments.
 
 ## Overview
@@ -6,6 +6,8 @@
 This repository contains an open-source implementation of the Cache Server. This stand-alone version of Cache Server is specifically optimized for LAN connected teams. The Cache Server speeds up initial import of project data, as well as platform switching within a project.
 
 This open-source repository is maintained separately from the Cache Server available on the Unity website and the implementation of the Cache Server that is packaged with the Unity installer.
+
+This version of the cache server does not support the new Asset Database Version 2 introduced in Unity 2019.3. For projects using the new Asset import pipeline, use the [Accelerator](https://blogs.unity3d.com/2019/09/11/speed-up-your-team-with-the-unity-accelerator/)
 
 #### Table of Contents
 * [Server Setup](#server-setup)
@@ -25,12 +27,13 @@ This open-source repository is maintained separately from the Cache Server avail
   * [Function](#function)
   * [Configuration](#configuration)
 * [Unity project Library Importer](#unity-project-library-importer)
+* [Diagnostics](#diagnostics)
 * [Contributors](#contributors)
 * [License](#license)
 
 ## Server Setup
 
-Download and install LTS version 8.10.0 of Node.js from the [Node.JS website](https://nodejs.org/en/download/).
+Download and install LTS version 12.13.x of Node.js from the [Node.JS website](https://nodejs.org/en/download/).
 
 #### Install from npm registry
 
@@ -38,11 +41,18 @@ Download and install LTS version 8.10.0 of Node.js from the [Node.JS website](ht
 npm install unity-cache-server -g
 ```
 
+For the latest beta release:
+```bash
+npm install unity-cache-server@beta -g
+```
+
 #### Install from GitHub source
 
 ```bash
 npm install github:Unity-Technologies/unity-cache-server -g
 ```
+
+Note: GitHub source install from `master` branch might be ahead of latest release version.
 
 ## Usage
 
@@ -52,42 +62,50 @@ npm install github:Unity-Technologies/unity-cache-server -g
 unity-cache-server [arguments]
 ```
 
-Command                          | Description
+Option                           | Description
 -------------------------------- | -----------
 `-V`, `--version`                | Show the version number of the Cache Server.
+`-h`, `--host <address>`         | The interface on which the Cache Server listens. The default is to listen on all interfaces.
 `-p`, `--port <n>`               | The port on which the Cache Server listens. The default value is 8126.
 `-c`, `--cache-module [path]`    | The path to cache module. The Default path is 'cache_fs'.
 `-P`, `--cache-path [path]`      | The path of the cache directory.
-`-l`, `--log-level <n>`          | The level of log verbosity. Valid values are 0 (silent) through 5 (debug). The default is 3.
+`-l`, `--log-level <n>`          | The level of log verbosity. Valid values are 0 (silent) through 4 (debug). The default is 3 (info).
 `-w`, `--workers <n>`            | The number of worker threads to spawn. The default is 0.
-`-m`, `--mirror [host:port]`     | Mirror transactions to another cache server. Repeat this option for multiple mirrors.
-`-m`, `--monitor-parent-process <n>` | Monitor a parent process and exit if it dies.
+`--diag-client-recorder`         | Record incoming client network stream to disk.
+`-m`, `--mirror <host:port>`     | Mirror transactions to another cache server. Repeat this option for multiple mirrors.
+`-W`, `--putwhitelist <host:port>`  | Only allow PUT transactions (uploads) from the specified client address. Repeat this option for multiple addresses.
 `--dump-config`                  | Write the active configuration to the console.
 `--save-config [path]`           | Write the active configuration to the specified file and exit. Defaults to `./default.yml`.
-`--NODE_CONFIG_DIR=<path>`       | The directory to search for config files. This is equivalent to setting the `NODE_CONFIG_DIR` environment variable. If not specified, the built-in configuration is used.
 `-h`, `--help`                   | Show usage information.
 
 ## Configuration files
 
 The `config/default.yml` file contains configuration values for the cache modules (see below) and other features. The config system is based on the node-config module. For additional information on how to manage environment specific config files, see the [Configuration Files](https://github.com/lorenwest/node-config/wiki/Configuration-Files) documentation on the node-config GitHub repository.
 
-By default, running `unity-cache-server` uses the built-in configuration file. To start Cache Server using a custom config file, save the current config to a new file and then use the `--NODE_CONFIG_DIR` option to override the location where the cache server will look for your config file(s).
-
 ### General Options
 Option                              | Default     | Description
 ----------------------------------- | ----------- | -----------
+Global.logLevel                     |3            | Logging level; override with the --log-level CLI command
 Cache.options.processor.putWhitelist|[]           | Only allow PUT transactions (uploads) from the specified array of IP addresses (string values)
+Cache.options.workers               |1            | Number of worker threads; override with the --worker CLI command
+Server.host                         |0.0.0.0      | The interface on which the Cache Server listens. Override with the --host CLI command
+Server.port                         |8126         | The port on which the Cache Server listens. Override with the --port CLI command
 Server.options.allowIPv6            |false        | Listen for client connections on both IPv4 and IPv6
 #### Examples (Mac/Linux)
 
-1) `mkdir config`
-1) `unity-cache-server --save-config config/default.yml`
-3) `unity-cache-server --NODE_CONFIG_DIR=config`
 
 You can have multiple configuration files based on environment:
 
 1) `export NODE_ENV=development`
 2) `unity-cache-server --save-config config/local-development.yml`
+
+To use a custom configuration directory:
+
+1) `mkdir myCustomConfig`
+2) `unity-cache-server --save-config myCustomConfig/default.yml`
+3) `export NODE_CONFIG_DIR=myCustomConfig`
+3) `unity-cache-server`
+
 
 To dump the current config to the console, run the following command:
 
@@ -164,12 +182,12 @@ Due to performance considerations, the `cache_fs` module shipped with Cache Serv
 or
 `node cleanup.js [options]`
 
-Command                          | Description
+Option                           | Description
 -------------------------------- | -----------
 -V, --version                    | Show the version number of cleanup script.
 -c --cache-module [path]         | The path to the cache module.
 -P, --cache-path [path]          | The path of the cache directory.
--l, --log-level <n>              | The level of log verbosity. Valid values are 0 (silent) through 5 (debug)
+-l, --log-level <n>              | The level of log verbosity. Valid values are 0 (silent) through 4 (debug)
 -e, --expire-time-span <timeSpan>| Override the configured file expiration timespan. Both ASP.NET style time spans (days.minutes:hours:seconds, for example '15.23:59:59') and ISO 8601 time spans (For example, 'P15DT23H59M59S') are supported.
 -s, --max-cache-size <bytes>     | Override the configured maximum cache size. Files will be removed from the cache until the max cache size is satisfied, using a Least Recently Used search. A value of 0 disables this check.
 -d, --delete                     | Delete cached files that match the configured criteria. Without this, the default behavior is to dry-run which will print diagnostic information only.
@@ -239,6 +257,20 @@ Tools are provided to quickly seed a Cache Server from a fully imported Unity pr
 * The default `server:port` is `localhost:8126`
 * The import process connects and uploads to the target host like any other Unity client, so it should be safe in a production environment.
 * Files are skipped if any changes were detected between when the JSON data was exported and when the importer tool is executed.
+
+## Diagnostics
+
+### Client Recorder (--diag-client-recorder)
+
+Starting up the Cache Server with the `--diag-client-recorder` option will write to disk raw data from all incoming client connections (by default to the `diagnostics/client-recordings` folder). Example tools and libraries for analysing recorded sessions can be found in the [ucs-diag-tools](https://github.com/Unity-Technologies/ucs-diag-utils) repository.
+
+### Configuration
+
+Option                                               | Default                         | Description
+------------------------------------------           | ------------------------------- | -----------
+Diagnostics.clientRecorder                           | false                           | Enable client network stream recording.
+Diagnostics.clientRecorderOptions.bufferSize         | 10000000                        | Size of in-memory buffer for client network stream recording. 
+Diagnostics.clientRecorderOptions.saveDir            | "diagnostics/client-recordings" | Directory where client network stream recordings will be saved. A relative directory will be relative to the server application startup directory.
 
 ## Contributors
 Contributions are welcome! Before submitting pull requests please note the Submission of Contributions section of the Apache 2.0 license.

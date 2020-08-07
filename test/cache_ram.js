@@ -13,7 +13,8 @@ const consts = require('../lib/constants');
 const MIN_FILE_SIZE = 1024 * 5;
 const MAX_FILE_SIZE = MIN_FILE_SIZE;
 
-describe("Cache: RAM", () => {
+describe("Cache: RAM", function() {
+    this.slow(250);
 
     const dirtyPages = () => cache._pageMeta.chain()
         .find({'dirty' : true}).data()
@@ -24,6 +25,7 @@ describe("Cache: RAM", () => {
         pageSize: MIN_FILE_SIZE * 2,
         maxPageCount: 2,
         minFreeBlockSize: 1024,
+        persistence: true,
         persistenceOptions: {
             autosave: false
         },
@@ -110,6 +112,33 @@ describe("Cache: RAM", () => {
                 await cache.endPutTransaction(trx);
                 assert(ok);
             });
+
+            it("should throw an error when trying to replace a file that is open for reading", async () => {
+                const TEST_FILE_SIZE = 1024 * 64 * 2;
+
+                const fData = generateCommandData(TEST_FILE_SIZE, TEST_FILE_SIZE);
+
+                // Add a file to the cache (use the info data)
+                await cache.init(opts);
+                let trx = await cache.createPutTransaction(fData.guid, fData.hash);
+                let wStream = await trx.getWriteStream(consts.FILE_TYPE.INFO, fData.info.length);
+                await new Promise(resolve => wStream.end(fData.info, resolve));
+                await cache.endPutTransaction(trx);
+
+                // Get a read stream
+                const rStream = await cache.getFileStream(consts.FILE_TYPE.INFO, fData.guid, fData.hash);
+
+                // Read a byte
+                await new Promise(resolve => rStream.once('readable', () => resolve(rStream.read(1))));
+
+                // Try to replace the file (use the resource data)
+                trx = await cache.createPutTransaction(fData.guid, fData.hash);
+                wStream = await trx.getWriteStream(consts.FILE_TYPE.INFO, fData.resource.length);
+                await new Promise(resolve => wStream.end(fData.resource, resolve));
+
+                return cache.endPutTransaction(trx).then(() => { throw new Error("Expected error"); }, (err) => assert(err))
+                    .then(() => rStream.destroy());
+            });
         });
 
         describe("shutdown", () => {
@@ -142,7 +171,8 @@ describe("Cache: RAM", () => {
 
         });
 
-        afterEach(() => {
+        afterEach(async () => {
+            await cache.shutdown();
             cache._clearCache();
             return fs.remove(opts.cachePath);
         });
